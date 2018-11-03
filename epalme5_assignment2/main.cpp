@@ -16,7 +16,6 @@
 #endif
 #endif 
 
-// turn off clipping
 #define CLIPPING_OFF
 
 #include <iostream>
@@ -50,13 +49,13 @@ float BOTTOM;
 constexpr float BACK = 5000;	// distance from PRP to back clipping plane
 constexpr float FRONT = 200;	// distance from PRP to front clipping plane
 constexpr float MODEL_SCALE_FACTOR = 2.5f;	// used for tweaking the size of models to match the viewing volume
-constexpr float CAMERA_SPEED = 8 * MODEL_SCALE_FACTOR;
+constexpr float CAMERA_SPEED = 6 * MODEL_SCALE_FACTOR;
 
 int gStartTime;
 float gTheta = 0;	// used to rotate models over time
 
-Vertex4f PRP( 0, MODEL_SCALE_FACTOR * 250, /*BACK * 0.9f*/0, 1 );	// the starting 'eye point' of the camera (in Viewing Reference Coordinates)
-Vertex4f VRP( 0, 0, BACK, 1 );		// viewing reference point (in World Coordinates)
+Vertex4f PRP( 0, MODEL_SCALE_FACTOR * 250, BACK * 0.9f, 1 );	// the starting 'eye point' of the camera (in Viewing Reference Coordinates)
+Vertex4f VRP( 0, 0, 0, 1 );		// viewing reference point (in World Coordinates)
 Vertex4f VuP( 0, 1, 0, 0 );		// View up vector
 
 Matrix4f Nper   = Identity();	// the normalization matrix for our perspective viewing volume
@@ -83,27 +82,27 @@ ClipCode GenerateClipCode( const Vertex4f& P )
 {
 	ClipCode code = cc_INSIDE;
 
-	if ( P.X() < -P.Z() )
+	if ( P.X() < -P.W() )
 	{
 		code |= cc_LEFT;
 	}
-	else if ( P.X() > P.Z() )
+	else if ( P.X() > P.W() )
 	{
 		code |= cc_RIGHT;
 	}
-	if ( P.Y() < -P.Z() )
+	if ( P.Y() < -P.W() )
 	{
 		code |= cc_BELOW;
 	} 
-	else if ( P.Y() > P.Z() )
+	else if ( P.Y() > P.W() )
 	{
 		code |= cc_ABOVE;
 	}
-	if ( P.Z() < -1 )
+	if ( P.Z() < -P.W() )
 	{
 		code |= cc_BEHIND;
 	}
-	else if ( P.Z() > -(FRONT / BACK) )
+	else if ( P.Z() > 0 )
 	{
 		code |= cc_FRONT;
 	}
@@ -112,10 +111,10 @@ ClipCode GenerateClipCode( const Vertex4f& P )
 }
 
 // use Cohen-Sutherland Line-Clipping algorithm on Homogeneous 4D points
-void ClipAndDrawLine( Vertex4f P0, Vertex4f P1 )
+void ClipAndDrawLine( Vertex4f P1, Vertex4f P2 )
 {
-	ClipCode code1 = GenerateClipCode( P0 );
-	ClipCode code2 = GenerateClipCode( P1 );
+	ClipCode code1 = GenerateClipCode( P1 );
+	ClipCode code2 = GenerateClipCode( P2 );
 	bool accept = false;
 	bool done = false;
 
@@ -141,50 +140,65 @@ void ClipAndDrawLine( Vertex4f P0, Vertex4f P1 )
 
 			ClipCode outCode = code1 ? code1 : code2;	// choose a clip code from outside the window
 
-			float dx = (P1.X() - P0.X());
-			float dy = (P1.Y() - P0.Y());
-			float dz = (P1.Z() - P0.Z());
-			float zmin = -FRONT / BACK;
-
 			float t;
 			if ( outCode & cc_ABOVE )
 			{
-				t = (P0.Y() + P0.Z()) / (-dy - dz);
+				Pi.Y() = P1.W();
+				t = (Pi.Y() - P1.Y()) / (P2.Y() - P1.Y());
+				Pi.X() = P1.X() + t * (P2.X() - P1.X());
+				Pi.Z() = P1.Z() + t * (P2.Z() - P1.Z());
+				Pi.W() = P1.W() + t * (P2.W() - P1.W());
 			}
 			else if ( outCode & cc_BELOW )
 			{
-				t = (-P0.Y() + P0.Z()) / (dy - dz);
+				Pi.Y() = -P1.W();
+				t = (Pi.Y() - P1.Y()) / (P2.Y() - P1.Y());
+				Pi.X() = P1.X() + t * (P2.X() - P1.X());
+				Pi.Z() = P1.Z() + t * (P2.Z() - P1.Z());
+				Pi.W() = P1.W() + t * (P2.W() - P1.W());
 			}
 			else if ( outCode & cc_RIGHT )
 			{
-				t = (P0.X() + P0.Z()) / (-dx - dz);
+				Pi.X() = P1.W();
+				t = (Pi.X() - P1.X()) / (P2.X() - P1.X());
+				Pi.Y() = P1.Y() + t * (P2.Y() - P1.Y());
+				Pi.Z() = P1.Z() + t * (P2.Z() - P1.Z());
+				Pi.W() = P1.W();
 			}
 			else if ( outCode & cc_LEFT )
 			{
-				t = (-P0.X() + P0.Z()) / (dx - dz);
+				Pi.X() = -P1.W();
+				t = (Pi.X() - P1.X()) / (P2.X() - P1.X());
+				Pi.Y() = P1.Y() + t * (P2.Y() - P1.Y());
+				Pi.Z() = P1.Z() + t * (P2.Z() - P1.Z());
+				Pi.W() = P1.W();
 			}
 			else if ( outCode & cc_FRONT )
 			{
-				t = (P0.Z() - zmin) / -dz;
+				Pi.Z() = 0;
+				t = (Pi.Z() - P1.Z()) / (P2.Z() - P1.Z());
+				Pi.Y() = P1.Y() + t * (P2.Y() - P1.Y());
+				Pi.X() = P1.X() + t * (P2.X() - P1.X());
+				Pi.W() = P1.W();
 			}
 			else if ( outCode & cc_BEHIND )
 			{
-				t = (-P0.Z() - 1) / dz;
+				Pi.Z() = -P1.W();
+				t = (Pi.Z() - P1.Z()) / (P2.Z() - P1.Z());
+				Pi.Y() = P1.Y() + t * (P2.Y() - P1.Y());
+				Pi.X() = P1.X() + t * (P2.X() - P1.X());
+				Pi.W() = P1.W();
 			}
-
-			Pi.X() = P0.X() + t * dx;
-			Pi.Y() = P0.Y() + t * dy;
-			Pi.Z() = P0.Z() + t * dz;
 
 			if ( outCode == code1 )
 			{
-				P0 = Pi;
-				code1 = GenerateClipCode( P0 );
+				P1 = Pi;
+				code1 = GenerateClipCode( P1 );
 			}
 			else
 			{
-				P1 = Pi;
-				code2 = GenerateClipCode( P1 );
+				P2 = Pi;
+				code2 = GenerateClipCode( P2 );
 			}
 		}
 	} while ( done == false );
@@ -192,12 +206,12 @@ void ClipAndDrawLine( Vertex4f P0, Vertex4f P1 )
 	if ( accept )
 	{
 		// transform into 2D device coordinates and draw
-		P0 = Mvv3dv * P0;
 		P1 = Mvv3dv * P1;
-		P0.ConvertW();
+		P2 = Mvv3dv * P2;
 		P1.ConvertW();
-		glVertex3f( P0.X(), P0.Y(), P0.Z() );
+		P2.ConvertW();
 		glVertex3f( P1.X(), P1.Y(), P1.Z() );
+		glVertex3f( P2.X(), P2.Y(), P2.Z() );
 	}
 }
 
@@ -211,7 +225,7 @@ void updateCamera()
 	glMatrixMode( GL_MODELVIEW );
 	glLoadIdentity();
 	gluLookAt( PRP.X(), PRP.Y(), PRP.Z(),
-			   -VRP.X(), -VRP.Y(), -VRP.Z(),	/* always looking middle of horizon */
+			   VRP.X(), VRP.Y(), VRP.Z(),	/* always looking middle of horizon */
 			   VuP.X(), VuP.Y(), VuP.Z() );
 #else	// USE_GLUT_TRANSFORMATIONS
 
@@ -221,7 +235,7 @@ void updateCamera()
 	 */
 	const Matrix4f Tvrp = Translate( -VRP.X(), -VRP.Y(), -VRP.Z() );
 	const Matrix4f R    = RotateVRC( PRP.X(), PRP.Y(), PRP.Z(),
-								     -VRP.X(), -VRP.Y(), -VRP.Z(),	/* always looking middle of horizon */
+								     VRP.X(), VRP.Y(), VRP.Z(),	/* always looking middle of horizon */
 								     VuP.X(), VuP.Y(), VuP.Z() );
 	const Matrix4f Tprp = Translate( -PRP.X(), -PRP.Y(), -PRP.Z() );
 
@@ -246,8 +260,8 @@ void updateCamera()
 	const Matrix4f Mc = ConvertPerToParVV( zMin );
 
 	// update Normalization matrix for Parallel Canonical Viewing Volume
-	Nper = Matrix4f::DotProduct( /*Mc,*/ Sper, Sh, Tprp, R, Tvrp );
-// 	Nper = Matrix4f::DotProduct( Mfru, Tprp, R, Tvrp );
+	Nper = Matrix4f::DotProduct( Mc, Sper, Sh, Tprp, R, Tvrp );
+	Nper = Matrix4f::DotProduct( Mfru, Tprp, R, Tvrp );
 
 #endif // USE_GLUT_TRANSFORMATIONS
 }
@@ -262,9 +276,8 @@ void drawFaces( Matrix4f M, vector<vector<Vertex4f>> faceVerts )
 			P = (M * P);
 			P.ConvertW();
 
-			// transform into perspective canonical viewing volume
+			// transform into homogeneous 4D canonical viewing volume
 			P = Nper * P;
-			P.ConvertW();
 		}
 
 		glBegin( GL_LINES );
@@ -479,10 +492,9 @@ void reshape( int w, int h )
 	const Matrix4f T1 = Translate( 1, 1, 1 );
 	const Matrix4f S = Scale( (RIGHT - LEFT) / 2, (TOP - BOTTOM) / 2, 0 );
 	const Matrix4f T2 = Translate( LEFT, BOTTOM, 0 );
-// 	const Matrix4f Mort = Ortho( LEFT, RIGHT, BOTTOM, TOP, 0, 1 );
-	const Matrix4f Mper = PerProj( -1 );
+	const Matrix4f Mort = Ortho( LEFT, RIGHT, BOTTOM, TOP, 0, 1 );
 	
-	Mvv3dv = Matrix4f::DotProduct( T2, S, T1, Mper );
+	Mvv3dv = Matrix4f::DotProduct( Mort, T2, S, T1 );
 
 #endif // USE_GLUT_TRANSFORMATIONS
 }
