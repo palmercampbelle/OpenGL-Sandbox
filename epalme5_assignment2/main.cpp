@@ -261,7 +261,7 @@ void updateCamera()
 
 	// update Normalization matrix for Parallel Canonical Viewing Volume
 	Nper = Matrix4f::DotProduct( Mc, Sper, Sh, Tprp, R, Tvrp );
-	Nper = Matrix4f::DotProduct( Mfru, Tprp, R, Tvrp );
+// 	Nper = Matrix4f::DotProduct( Mfru, Tprp, R, Tvrp );
 
 #endif // USE_GLUT_TRANSFORMATIONS
 }
